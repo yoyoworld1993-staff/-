@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 from core import calculate
+from discovery import search_all, auction_search, mercari_search
 
 TZ = ZoneInfo("Asia/Shanghai")
 PLATFORMS = [
@@ -61,14 +62,14 @@ def parse_end(s):
         return None
     return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
 
-def record(title, platform, kind, price, sale, end_at="", url="", demo=False):
+def record(title, platform, kind, price, sale, end_at="", url="", demo=False, allow_unknown_end=False):
     if not str(title).strip():
         raise ValueError("请输入商品型号或标题")
     price, sale = float(price), float(sale)
     if not (0 <= price <= 100000000 and 0 <= sale <= 100000000):
         raise ValueError("商品价格必须是有效的非负数")
     end = parse_end(end_at)
-    if kind == "拍卖" and end is None:
+    if kind == "拍卖" and end is None and not allow_unknown_end:
         raise ValueError("拍卖商品请填写预计结束时间")
     return dict(
         id=uuid4().hex[:12], title=str(title).strip(), platform=str(platform),
@@ -140,13 +141,15 @@ def show_card(r):
         st.caption("{} · {}".format(r["platform"], time_label(r, info)))
         c1, c2 = st.columns(2)
         c1.metric("日本当前价格", "¥{:,.0f} 日元".format(r["bid_jpy"]))
-        c2.metric("预计净利润", "{:+,.0f} 元".format(info["profit"]))
+        c2.metric("预计净利润", "{:+,.0f} 元".format(info["profit"]) if r["sale_cny"] > 0 else "待估价")
         st.markdown(
             "<div class='smallmuted'>到手成本 ¥{:,.0f} · 利润率 {:.1f}% · 最高竞拍价 {:,} 日元</div>".format(
                 info["cost"], info["roi"], info["cap"]
             ), unsafe_allow_html=True
         )
-        if info["eligible"]:
+        if r["sale_cny"] <= 0:
+            st.warning("尚未填写闲鱼估价，无法判断利润或最高出价")
+        elif info["eligible"]:
             st.success("达到预设净利润和利润率门槛", icon="✅")
         else:
             st.caption("未同时满足预设净利润和利润率门槛")
@@ -206,19 +209,57 @@ with radar_tab:
         st.info("请到「录入」添加商品，或先开启模拟样例。")
 
 with source_tab:
-    st.subheader("7 个日本货源入口")
-    st.caption("这是原站搜索入口，不是已经抓取的商品清单。")
-    kw = st.text_input("日文搜索词", value="トミカ", help="可使用 トミカ / 京商 / ミニカー / 1/64")
-    if st.button("复制搜索词", use_container_width=True):
-        st.code(kw)
-        st.info("请长按上面的搜索词复制，再到原站搜索。")
+    st.subheader("🔎 免费自动搜索")
+    st.caption("仅在你点击时搜索公开网页；无登录绕过、不使用付费 API。获取失败会明确提示。")
+    searchword = st.text_input("搜索日本模型", value="トミカ", help="示例：トミカ / 京商 / TLV / ミニカー")
+    if "free_results" not in st.session_state:
+        st.session_state["free_results"] = []
+    @st.cache_data(ttl=180, show_spinner=False)
+    def free_search_cached(keyword):
+        return search_all(keyword)
+    if st.button("🔎 现在免费找货", type="primary", use_container_width=True):
+        try:
+            with st.spinner("正在检查网站公开数据，最多需要几十秒……"):
+                st.session_state["free_results"] = free_search_cached(searchword.strip())
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            st.error("搜索失败，请稍后重试：" + type(e).__name__)
+    for res in st.session_state["free_results"]:
+        with st.expander("{} · {}".format(res["source"], "找到 {} 件".format(len(res["products"])) if res["status"] == "ok" else "尚不可自动读取"), expanded=(res["status"] == "ok")):
+            st.caption(res["observed_at"] + " · " + res["reason"])
+            st.link_button("打开原站搜索 ↗", res["search_url"], use_container_width=True)
+            for product in res["products"]:
+                with st.container(border=True):
+                    st.markdown("**{}**".format(safe(product["title"])), unsafe_allow_html=True)
+                    st.caption("{} · {}".format(product["platform"], product["evidence"]))
+                    st.markdown("**{:,.0f} 日元**".format(product["price_jpy"]))
+                    st.caption(product["time_status"] + " · 该价格未验证最终成交")
+                    c1, c2 = st.columns(2)
+                    c1.link_button("商品原链接 ↗", product["url"], use_container_width=True)
+                    if c2.button("收藏到雷达", key="save_" + str(product["platform"]) + str(product["id"]), use_container_width=True):
+                        if any(x.get("url") == product["url"] for x in st.session_state["records"]):
+                            st.info("这件商品已经在你的收藏中。")
+                        else:
+                            try:
+                                new = record(product["title"], product["platform"], product["kind"],
+                                             product["price_jpy"], 0, product["end_at"],
+                                             product["url"], allow_unknown_end=True)
+                                new["source_status"] = "公开网页检索，未核实最新竞价/截拍时间"
+                                st.session_state["records"].append(new)
+                                st.success("已收藏。请在「我的货」补充闲鱼售价和截拍时间。")
+                            except ValueError as e:
+                                st.error(str(e))
+    st.divider()
+    st.subheader("手动打开更多日本渠道")
+    st.caption("这些网址是免费搜索入口，不代表已自动接入。")
     for label, link, detail in SITES:
         with st.container(border=True):
             l, b = st.columns([2, 1])
             l.markdown("**{}**".format(label))
             l.caption(detail)
             b.link_button("打开 ↗", link, use_container_width=True)
-    st.caption("未来将逐平台核验可使用的授权接口或公开商品数据；不会伪称已经接入实时拍卖。")
+    st.caption("只要页面结构变化、请求受限或 robots 禁止访问，本次搜索会明确显示失败，不会伪造商品。")
 
 with add_tab:
     st.subheader("添加关注商品")
@@ -288,7 +329,7 @@ with manage_tab:
             if st.form_submit_button("保存更新", use_container_width=True):
                 try:
                     if selected["kind"] == "拍卖" and not changed_end:
-                        raise ValueError("拍卖商品须有预计结束时间")
+                        st.warning("未填写预计结束时间，这件商品不会进入最后5分钟筛选")
                     parse_end(changed_end)
                     if changed_price != selected["bid_jpy"]:
                         selected["history"].append({
