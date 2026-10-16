@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 URL = re.compile(r"https?://[^\s<>\u3000\"'，。；）)]+", re.I)
 JPY = [
-    re.compile(r"(?:[¥￥]\s*)?(\d[\d,]{0,11})\s*(?:日元|円|JPY)\b?", re.I),
+    re.compile(r"(?:[¥￥]\s*)?(\d[\d,]{0,11})\s*(?:日元|円|JPY)", re.I),
     re.compile(r"(?:現在価格|現價|现在价格|当前竞价|一口价|即決価格)\s*[:：]?\s*[¥￥]\s*(\d[\d,]{0,11})", re.I),
 ]
 
