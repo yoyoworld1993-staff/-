@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 from core import calculate
+from intake import parse_clipboard
 from discovery import search_all, auction_search, mercari_search
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -81,7 +82,7 @@ def record(title, platform, kind, price, sale, end_at="", url="", demo=False, al
 if "records" not in st.session_state:
     st.session_state["records"] = []
 if "demo_on" not in st.session_state:
-    st.session_state["demo_on"] = True
+    st.session_state["demo_on"] = False
 if "settings" not in st.session_state:
     st.session_state["settings"] = {
         "fx": 0.044, "ship_jpy": 0, "fee": 5.0, "ship_cny": 45.0,
@@ -113,7 +114,7 @@ def evaluate(r):
     end = parse_end(r.get("end_at", ""))
     mins = ((end - now()).total_seconds() / 60) if end else None
     urgent = r["kind"] == "拍卖" and mins is not None and 0 <= mins <= 5
-    eligible = profit >= settings["target"] and roi >= settings["roi"]
+    eligible = r["sale_cny"] > 0 and profit >= settings["target"] and roi >= settings["roi"]
     score = max(-100, min(100, profit / max(settings["target"], 1) * 35)) + max(-100, min(100, roi / max(settings["roi"], 1) * 35))
     score += 18 if urgent else 0
     return dict(cost=cost, profit=profit, cap=cap, roi=roi, mins=mins, urgent=urgent, eligible=eligible, score=score)
@@ -171,7 +172,8 @@ radar_tab, source_tab, add_tab, manage_tab, config_tab = st.tabs(
 with radar_tab:
     own = st.session_state["records"]
     if not own:
-        st.info("还没有录入真实商品。下面显示模拟样例，帮助你体验筛选与利润判断。")
+        st.warning("当前还没有真实商品。请先到「找货」打开免费跨站搜索，再把商品复制到雷达。")
+        st.link_button("🔎 立即到 JPSearch 找真实日本货 ↗", "https://jpsearch.moe/", use_container_width=True)
     show_demo = st.toggle("显示模拟样例", value=st.session_state["demo_on"], key="show_demo_toggle")
     st.session_state["demo_on"] = show_demo
     all_rows = list(own) + (demo_data() if show_demo else [])
@@ -206,70 +208,61 @@ with radar_tab:
             show_card(r)
         st.caption("剩余时间按预计截拍时间计算；进入本页或互动刷新时更新，不代表拍卖网站的实时报价。")
     else:
-        st.info("请到「录入」添加商品，或先开启模拟样例。")
+        st.info("雷达没有真实商品。先到「找货」跨平台搜索，复制感兴趣的商品就能添加。")
 
 with source_tab:
-    st.subheader("🔎 免费自动搜索 · 测试版")
-    st.caption("仅在你点击时搜索公开网页；无登录绕过、不使用付费 API。获取失败会明确提示。")
-    searchword = st.text_input("搜索日本模型", value="トミカ", help="示例：トミカ / 京商 / TLV / ミニカー")
-    if "free_results" not in st.session_state:
-        st.session_state["free_results"] = []
-    @st.cache_data(ttl=180, show_spinner=False)
-    def free_search_cached(keyword):
-        return search_all(keyword)
-    if st.button("🔎 现在免费找货", type="primary", use_container_width=True):
-        try:
-            with st.spinner("正在检查网站公开数据，最多需要几十秒……"):
-                st.session_state["free_results"] = free_search_cached(searchword.strip())
-        except ValueError as e:
-            st.error(str(e))
-        except Exception as e:
-            st.error("搜索失败，请稍后重试：" + type(e).__name__)
-    for res in st.session_state["free_results"]:
-        with st.expander("{} · {}".format(res["source"], "找到 {} 件".format(len(res["products"])) if res["status"] == "ok" else "尚不可自动读取"), expanded=(res["status"] == "ok")):
-            st.caption(res["observed_at"] + " · " + res["reason"])
-            st.link_button("打开原站搜索 ↗", res["search_url"], use_container_width=True)
-            for product in res["products"]:
-                with st.container(border=True):
-                    st.markdown("**{}**".format(safe(product["title"])), unsafe_allow_html=True)
-                    st.caption("{} · {}".format(product["platform"], product["evidence"]))
-                    st.markdown("**{:,.0f} 日元**".format(product["price_jpy"]))
-                    st.caption(product["time_status"] + " · 该价格未验证最终成交")
-                    c1, c2 = st.columns(2)
-                    c1.link_button("商品原链接 ↗", product["url"], use_container_width=True)
-                    if c2.button("收藏到雷达", key="save_" + str(product["platform"]) + str(product["id"]), use_container_width=True):
-                        if any(x.get("url") == product["url"] for x in st.session_state["records"]):
-                            st.info("这件商品已经在你的收藏中。")
-                        else:
-                            try:
-                                new = record(product["title"], product["platform"], product["kind"],
-                                             product["price_jpy"], 0, product["end_at"],
-                                             product["url"], allow_unknown_end=True)
-                                new["source_status"] = "公开网页检索，未核实最新竞价/截拍时间"
-                                st.session_state["records"].append(new)
-                                st.success("已收藏。请在「我的货」补充闲鱼售价和截拍时间。")
-                            except ValueError as e:
-                                st.error(str(e))
-    st.divider()
-    st.subheader("手动打开更多日本渠道")
-    st.caption("自动搜索如果受限，可点下方对应网站继续免费搜索。")
-    from urllib.parse import urlencode
-    q = searchword.strip()
-    direct = [
-        ("Yahoo 拍卖同词搜索", "https://auctions.yahoo.co.jp/search/search?" + urlencode({"p": q, "s1": "end", "o1": "a"})),
-        ("煤炉同词搜索", "https://jp.mercari.com/search?" + urlencode({"keyword": q})),
-        ("Rakuma 同词搜索", "https://fril.jp/s?" + urlencode({"query": q})),
-    ]
-    for label, link in direct:
-        st.link_button(label + " ↗", link, use_container_width=True)
+    st.subheader("🌏 真正找日本货 · 免费方案")
+    st.caption("已有平台负责跨站搜索，我们负责收藏、成本和竞拍利润。不是空白爬虫，也不会伪造商品。")
+    searchword = st.text_input("小车关键词（日文更容易找到）", value="トミカ", help="例如 トミカ / TLV / 京商 / ミニカー / 1/18")
+    st.code(searchword, language=None)
+    st.caption("可复制上方关键词，在打开的网站里搜索。")
+    st.link_button("⭐ JPSearch｜Yahoo、煤炉等 8 个平台一站搜索 ↗", "https://jpsearch.moe/", use_container_width=True, type="primary")
+    st.link_button("ZenMarket 中文跨平台搜索 ↗", "https://zenmarket.jp/cn/", use_container_width=True)
+    st.caption("JPSearch 免费版每天约 3 次搜索、通知约每 12 小时检查一次；不是 5 分钟实时监控。不要求在本软件中付费。")
 
-    for label, link, detail in SITES:
-        with st.container(border=True):
-            l, b = st.columns([2, 1])
-            l.markdown("**{}**".format(label))
-            l.caption(detail)
-            b.link_button("打开 ↗", link, use_container_width=True)
-    st.caption("只要页面结构变化、请求受限或 robots 禁止访问，本次搜索会明确显示失败，不会伪造商品。")
+    from urllib.parse import urlencode
+    q = searchword.strip() or "トミカ"
+    st.markdown("**想直接盯最后 5 分钟？打开日本原站：**")
+    st.link_button("⏱ Yahoo 拍卖｜按结束时间由近到远 ↗",
+                   "https://auctions.yahoo.co.jp/search/search?" + urlencode({"p": q, "s1": "end", "o1": "a"}),
+                   use_container_width=True)
+    st.link_button("Mercari 煤炉｜搜索同款 ↗",
+                   "https://jp.mercari.com/search?" + urlencode({"keyword": q}), use_container_width=True)
+    with st.expander("更多日本货源网站"):
+        st.link_button("Rakuma ↗", "https://fril.jp/", use_container_width=True)
+        st.link_button("骏河屋 ↗", "https://www.suruga-ya.jp/", use_container_width=True)
+        st.link_button("Mandarake ↗", "https://order.mandarake.co.jp/", use_container_width=True)
+    st.divider()
+    st.subheader("📋 查到商品后，快速加入雷达")
+    st.caption("从日本商品页面复制标题、日元价格和链接；粘贴到下面，软件会尝试识别。无需手动逐项输入。")
+    clip = st.text_area("粘贴商品文字或分享内容", placeholder="KK scale 1/18 Pontiac LeMans GTO 1972\n15,500日元（参考价：682人民币）\nhttps://...", height=120, key="clip_search")
+    guess = parse_clipboard(clip)
+    with st.form("import_from_clipboard"):
+        inferred_title = st.text_input("商品型号（可修改）", value=guess["title"], placeholder="请确认商品名称和版本")
+        inferred_price = st.number_input("日本报价（日元）", min_value=0, value=int(guess["bid_jpy"] or 0), step=100)
+        platform_index = PLATFORMS.index(guess["platform"]) if guess["platform"] in PLATFORMS else 0
+        inferred_platform = st.selectbox("货源平台", PLATFORMS, index=platform_index)
+        inferred_kind = st.selectbox("拍卖 / 一口价", ["拍卖", "一口价"], index=1 if guess["kind"] == "一口价" else 0)
+        inferred_end = st.text_input("预计截拍时间（北京时间，可空）", placeholder="2026-10-17 22:30；没有可靠截拍时间可不填")
+        inferred_sale = st.number_input("闲鱼保守售价（人民币，可稍后补）", min_value=0.0, value=0.0, step=10.0)
+        inferred_link = st.text_input("原商品链接（可空）", value=guess["url"])
+        if st.form_submit_button("✅ 加入我的雷达", type="primary", use_container_width=True):
+            try:
+                if not inferred_price:
+                    raise ValueError("必须填写日本报价后才能保存")
+                product = record(inferred_title, inferred_platform, inferred_kind,
+                                 inferred_price, inferred_sale, inferred_end, inferred_link,
+                                 allow_unknown_end=True)
+                product["source_status"] = "你粘贴的真实商品线索，报价需在原站核对"
+                if product["url"] and any(old.get("url") == product["url"] for old in st.session_state["records"]):
+                    st.info("这件商品已经收藏过了。")
+                else:
+                    st.session_state["records"].append(product)
+                    st.success("已加入「雷达」！现在可以监控预计截拍、编辑售价和竞价。")
+            except (ValueError, TypeError) as e:
+                st.error(str(e))
+    st.caption("商品信息来自你复制的页面，不等于最新成交价。雷达不自动更新外站竞价。")
+
 
 with add_tab:
     st.subheader("添加关注商品")
