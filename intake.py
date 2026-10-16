@@ -50,6 +50,7 @@ def parse_clipboard(text):
         if len(line) >= 8 and re.search(r"[a-zA-Z\u3040-\u30ff\u4e00-\u9fff]", line):
             title = line[:200]
             break
-    kind = "一口价" if "一口价" in text or "即決のみ" in text else "拍卖"
+    fixed_sources = {"Mercari 煤炉", "Rakuma", "Yahoo Shopping", "Suruga-ya 骏河屋", "Mandarake"}
+    kind = "一口价" if ("一口价" in text or "即決のみ" in text or platform in fixed_sources) else "拍卖"
     return {"title": title, "platform": platform, "kind": kind,
             "bid_jpy": bid, "url": url}
