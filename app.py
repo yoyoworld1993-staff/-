@@ -165,8 +165,8 @@ st.markdown("<div class='hero'><div style='font-size:1.55rem;font-weight:800'>�
             "<span class='pill'>闲鱼利润测算</span></div></div>", unsafe_allow_html=True)
 st.caption("⚠️ 当前为试用原型：尚无日本平台实时采集，竞价和闲鱼售价需手动填入。")
 
-radar_tab, source_tab, add_tab, manage_tab, config_tab = st.tabs(
-    ["🎯 雷达", "🔎 找货", "➕ 录入", "📦 我的货", "⚙️ 设置"]
+source_tab, radar_tab, add_tab, manage_tab, config_tab = st.tabs(
+    ["🔎 找货", "🎯 雷达", "➕ 录入", "📦 我的货", "⚙️ 设置"]
 )
 
 with radar_tab:
