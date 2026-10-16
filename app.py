@@ -81,8 +81,6 @@ def record(title, platform, kind, price, sale, end_at="", url="", demo=False, al
 
 if "records" not in st.session_state:
     st.session_state["records"] = []
-if "demo_on" not in st.session_state:
-    st.session_state["demo_on"] = False
 if "settings" not in st.session_state:
     st.session_state["settings"] = {
         "fx": 0.044, "ship_jpy": 0, "fee": 5.0, "ship_cny": 45.0,
@@ -174,9 +172,7 @@ with radar_tab:
     if not own:
         st.warning("当前还没有真实商品。请先到「找货」打开免费跨站搜索，再把商品复制到雷达。")
         st.link_button("🔎 立即到 JPSearch 找真实日本货 ↗", "https://jpsearch.moe/", use_container_width=True)
-    show_demo = st.toggle("显示模拟样例", value=st.session_state["demo_on"], key="show_demo_toggle")
-    st.session_state["demo_on"] = show_demo
-    all_rows = list(own) + (demo_data() if show_demo else [])
+    all_rows = list(own)
     if all_rows:
         evaluated = [(r, evaluate(r)) for r in all_rows]
         close = sum(1 for _, v in evaluated if v["urgent"])
@@ -206,9 +202,9 @@ with radar_tab:
             st.info("当前筛选条件下没有商品。")
         for r, _ in filtered:
             show_card(r)
-        st.caption("剩余时间按预计截拍时间计算；进入本页或互动刷新时更新，不代表拍卖网站的实时报价。")
+        st.caption("当前收藏数据只在这次会话中保存，请在「我的货」导出备份。剩余时间依据输入的预计截拍时间，不代表实时竞价。")
     else:
-        st.info("雷达没有真实商品。先到「找货」跨平台搜索，复制感兴趣的商品就能添加。")
+        st.info("目前没有已收藏商品。切换到「找货」，复制真实商品的标题与价格，加入雷达后这里才会显示。")
 
 with source_tab:
     st.subheader("🌏 真正找日本货 · 免费方案")
