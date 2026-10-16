@@ -143,8 +143,8 @@ def show_card(r):
         c1.metric("日本当前价格", "¥{:,.0f} 日元".format(r["bid_jpy"]))
         c2.metric("预计净利润", "{:+,.0f} 元".format(info["profit"]) if r["sale_cny"] > 0 else "待估价")
         st.markdown(
-            "<div class='smallmuted'>到手成本 ¥{:,.0f} · 利润率 {:.1f}% · 最高竞拍价 {:,} 日元</div>".format(
-                info["cost"], info["roi"], info["cap"]
+            "<div class='smallmuted'>到手成本 ¥{:,.0f} · {} </div>".format(
+                info["cost"], "利润率 {:.1f}% · 最高竞拍价 {:,} 日元".format(info["roi"], info["cap"]) if r["sale_cny"] > 0 else "闲鱼估价缺失 · 尚无法计算合理最高出价"
             ), unsafe_allow_html=True
         )
         if r["sale_cny"] <= 0:
@@ -209,7 +209,7 @@ with radar_tab:
         st.info("请到「录入」添加商品，或先开启模拟样例。")
 
 with source_tab:
-    st.subheader("🔎 免费自动搜索")
+    st.subheader("🔎 免费自动搜索 · 测试版")
     st.caption("仅在你点击时搜索公开网页；无登录绕过、不使用付费 API。获取失败会明确提示。")
     searchword = st.text_input("搜索日本模型", value="トミカ", help="示例：トミカ / 京商 / TLV / ミニカー")
     if "free_results" not in st.session_state:
@@ -252,7 +252,17 @@ with source_tab:
                                 st.error(str(e))
     st.divider()
     st.subheader("手动打开更多日本渠道")
-    st.caption("这些网址是免费搜索入口，不代表已自动接入。")
+    st.caption("自动搜索如果受限，可点下方对应网站继续免费搜索。")
+    from urllib.parse import urlencode
+    q = searchword.strip()
+    direct = [
+        ("Yahoo 拍卖同词搜索", "https://auctions.yahoo.co.jp/search/search?" + urlencode({"p": q, "s1": "end", "o1": "a"})),
+        ("煤炉同词搜索", "https://jp.mercari.com/search?" + urlencode({"keyword": q})),
+        ("Rakuma 同词搜索", "https://fril.jp/s?" + urlencode({"query": q})),
+    ]
+    for label, link in direct:
+        st.link_button(label + " ↗", link, use_container_width=True)
+
     for label, link, detail in SITES:
         with st.container(border=True):
             l, b = st.columns([2, 1])
