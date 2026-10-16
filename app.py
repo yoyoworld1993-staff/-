@@ -7,7 +7,7 @@ from core import calculate
 st.set_page_config(page_title="中古猎手",page_icon="🚗",layout="wide")
 st.title("🚗 中古猎手")
 st.caption("手机云端原型｜手动/CSV导入，非实时爬虫。数据只保存在当前会话，请及时导出。")
-if "items" not in st.session_state: st.session_state.items=[]
+if "items" not in st.session_state: st.session_state['items']=[]
 with st.sidebar:
  st.header("利润参数")
  fx=st.number_input("1日元=人民币",min_value=0.001,value=0.045,step=0.001,format="%.3f")
@@ -32,7 +32,7 @@ with st.form("add"):
    if not title.strip(): raise ValueError("商品名称不能为空")
    if url and urlparse(url).scheme not in ("https","http"): raise ValueError("仅支持 http/https 链接")
    if end: datetime.strptime(end,"%Y-%m-%d %H:%M")
-   st.session_state.items.append(dict(商品=title,平台=platform,类型=kind,链接=url,日元价格=bid,闲鱼售价=sale,结束时间=end))
+   st.session_state['items'].append(dict(商品=title,平台=platform,类型=kind,链接=url,日元价格=bid,闲鱼售价=sale,结束时间=end))
    st.success("保存成功")
   except ValueError as e: st.error(str(e))
 up=st.file_uploader("CSV 导入（商品、平台、类型、链接、日元价格、闲鱼售价、结束时间）",type="csv")
@@ -47,11 +47,11 @@ if up and st.button("导入 CSV"):
    if r["日元价格"]<0 or r["闲鱼售价"]<0: raise ValueError("价格不能为负")
    if r["结束时间"]: datetime.strptime(str(r["结束时间"] ),"%Y-%m-%d %H:%M")
    parsed.append(r)
-  st.session_state.items.extend(parsed);st.success(f"成功导入 {len(parsed)} 条")
+  st.session_state['items'].extend(parsed);st.success(f"成功导入 {len(parsed)} 条")
  except Exception as e: st.error(str(e))
 now=datetime.now(ZoneInfo("Asia/Shanghai"))
 rows=[]
-for i,r in enumerate(st.session_state.items):
+for i,r in enumerate(st.session_state['items']):
  try:
   cost,profit,cap=calculate(float(r["日元价格"]),fx,ship_jpy,fee,ship_cny,float(r["闲鱼售价"]),discount,reserve,target)
   minutes=None
