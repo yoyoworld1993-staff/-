@@ -361,7 +361,7 @@ with manage_tab:
 with config_tab:
     st.subheader("成本与利润参数")
     st.caption("这些是可修改的试算假设，非平台实际报价。")
-    with st.form("settings"):
+    with st.form("profit_settings_form"):
         fx = st.number_input("每 1 日元折合人民币", 0.001, 1.0, float(settings["fx"]), step=0.001, format="%.3f")
         ship_jpy = st.number_input("日本国内运费（日元）", min_value=0, value=int(settings["ship_jpy"]))
         fee = st.number_input("代购手续费率（%）", 0.0, 99.0, float(settings["fee"]))
