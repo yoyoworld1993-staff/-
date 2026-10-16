@@ -17,3 +17,6 @@
 `streamlit run app.py`
 
 后续路线：授权数据源 → 自动巡检 → 永久数据库 → 安全登录 → 手机提醒。
+
+## 免费自动搜索试验版
+通过 discovery.py 对 Yahoo Auctions 和 Mercari 搜索页按按钮触发保守读取；遵守 robots.txt，无需登录，不保证网站允许或能成功采集。Yahoo Shopping 官方 API 需要单独申请免费 Client ID。没有最新报价/截拍信息的商品明确标注未知；免费搜索失败可点原站链接。不要依赖本版执行自动竞拍。
