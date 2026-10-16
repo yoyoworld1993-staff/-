@@ -32,7 +32,7 @@ def result(source, status, reason, url, products=None):
 def allowed_link(raw, hostname):
     try:
         u = urlparse(raw)
-        if u.scheme != "https" or u.hostname != hostname or u.username or u.password:
+        if u.scheme != "https" or u.hostname not in (hostname if isinstance(hostname, (tuple, list, set)) else (hostname,)) or u.username or u.password:
             return ""
         return u.geturl()
     except (TypeError, ValueError):
